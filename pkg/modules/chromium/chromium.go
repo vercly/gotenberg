@@ -118,6 +118,10 @@ type Options struct {
 	// OmitBackground hides default white background and allows generating PDFs
 	// with transparency.
 	OmitBackground bool
+
+	TryAcceptCookies bool
+
+	ScrollToBottomPage bool
 }
 
 // DefaultOptions returns the default values for Options.

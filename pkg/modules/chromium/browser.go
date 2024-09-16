@@ -234,6 +234,8 @@ func (b *chromiumBrowser) pdf(ctx context.Context, logger *zap.Logger, url, outp
 		forceExactColorsActionFunc(),
 		emulateMediaTypeActionFunc(logger, options.EmulatedMediaType),
 		waitDelayBeforePrintActionFunc(logger, b.arguments.disableJavaScript, options.WaitDelay),
+		tryAcceptCookies(logger, options.TryAcceptCookies),
+		scrollToBottomPage(logger, options.ScrollToBottomPage),
 		waitForExpressionBeforePrintActionFunc(logger, b.arguments.disableJavaScript, options.WaitForExpression),
 		// PDF specific.
 		printToPdfActionFunc(logger, outputPath, options),
@@ -257,6 +259,8 @@ func (b *chromiumBrowser) screenshot(ctx context.Context, logger *zap.Logger, ur
 		hideDefaultWhiteBackgroundActionFunc(logger, options.OmitBackground, true),
 		forceExactColorsActionFunc(),
 		emulateMediaTypeActionFunc(logger, options.EmulatedMediaType),
+		tryAcceptCookies(logger, options.TryAcceptCookies),
+		scrollToBottomPage(logger, options.ScrollToBottomPage),
 		waitDelayBeforePrintActionFunc(logger, b.arguments.disableJavaScript, options.WaitDelay),
 		waitForExpressionBeforePrintActionFunc(logger, b.arguments.disableJavaScript, options.WaitForExpression),
 		// Screenshot specific.

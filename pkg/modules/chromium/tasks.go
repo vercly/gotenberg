@@ -462,6 +462,97 @@ func waitDelayBeforePrintActionFunc(logger *zap.Logger, disableJavaScript bool, 
 	}
 }
 
+func scrollToBottomPage(logger *zap.Logger, scrollToBottomPage bool) chromedp.ActionFunc {
+	return func(ctx context.Context) error {
+		if !scrollToBottomPage {
+			return nil
+		}
+		script := `
+				function myScroll(){
+					window.scrollTo({top: current,left: 0,behavior: "instant"});
+					current = current + windowHeight;
+				}
+				
+				function checkScrollExpected(){
+					var body = document.body,
+					html = document.documentElement;
+					var height = Math.max( body.scrollHeight, body.offsetHeight,
+							html.clientHeight, html.scrollHeight, html.offsetHeight );
+					console.log(current, height);
+					if( current < height ) {
+						myScroll();
+						setTimeout(checkScrollExpected, 50);
+					}
+				}
+
+				var current = 0;
+				var windowHeight = window.innerHeight;
+				checkScrollExpected();`
+
+		logger.Debug("scroll to bootom running")
+
+		evaluate := chromedp.Evaluate(script, nil)
+		_ = evaluate.Do(ctx)
+
+		return nil
+	}
+}
+
+func tryAcceptCookies(logger *zap.Logger, tryAcceptCookies bool) chromedp.ActionFunc {
+	const (
+		COOKIE_BUTTON_SELECTOR        = `//button[.//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '%s')]]`
+		NESTED_COOKIE_BUTTON_SELECTOR = `//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '%s')]`
+		COOKIE_CONSENT_EVAL           = `document.evaluate("%s", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue !== null`
+		LOAD_OFFSET                   = 2
+	)
+
+	selectors := []string{
+		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "akceptuj"),
+		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "accept"),
+		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "agree"),
+		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "consent"),
+		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "enter"),
+		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "go"),
+		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "zgod"),
+		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "przej"),
+		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "allow all"),
+		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "allow"),
+		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "akceptuj"),
+		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "accept"),
+		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "agree"),
+		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "consent"),
+		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "enter"),
+		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "go"),
+		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "zgod"),
+		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "przej"),
+		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "allow all"),
+		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "allow"),
+		`//button[contains(@class, 'cookie-accept')]`,
+		`//button[contains(@class, 'accept-cookies')]`,
+		`//button[@id='accept-cookie']`,
+		`//button[@id='accept-cookies']`,
+	}
+
+	return func(ctx context.Context) error {
+		if !tryAcceptCookies {
+			return nil
+		}
+		for _, xpath := range selectors {
+			var nodes []*cdp.Node
+			if err := chromedp.Nodes(xpath, &nodes, chromedp.AtLeast(0)).Do(ctx); err != nil {
+				logger.Error(fmt.Sprintf("%v", err))
+				continue
+			}
+			if len(nodes) == 0 {
+				continue
+			}
+			_ = chromedp.MouseClickNode(nodes[0]).Do(ctx)
+		}
+
+		return nil
+	}
+}
+
 func waitForExpressionBeforePrintActionFunc(logger *zap.Logger, disableJavaScript bool, expression string) chromedp.ActionFunc {
 	return func(ctx context.Context) error {
 		if disableJavaScript {

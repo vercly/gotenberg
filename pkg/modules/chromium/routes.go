@@ -39,6 +39,8 @@ func FormDataChromiumOptions(ctx *api.Context) (*api.FormData, Options) {
 		extraHttpHeaders        map[string]string
 		emulatedMediaType       string
 		omitBackground          bool
+		tryAcceptCookies        bool
+		scrollToBottomPage      bool
 	)
 
 	form := ctx.FormData().
@@ -107,7 +109,9 @@ func FormDataChromiumOptions(ctx *api.Context) (*api.FormData, Options) {
 
 			return nil
 		}).
-		Bool("omitBackground", &omitBackground, defaultOptions.OmitBackground)
+		Bool("omitBackground", &omitBackground, defaultOptions.OmitBackground).
+		Bool("tryAcceptCookies", &tryAcceptCookies, false).
+		Bool("scrollToBottomPage", &scrollToBottomPage, false)
 
 	options := Options{
 		SkipNetworkIdleEvent:    skipNetworkIdleEvent,
@@ -121,6 +125,8 @@ func FormDataChromiumOptions(ctx *api.Context) (*api.FormData, Options) {
 		ExtraHttpHeaders:        extraHttpHeaders,
 		EmulatedMediaType:       emulatedMediaType,
 		OmitBackground:          omitBackground,
+		TryAcceptCookies:        tryAcceptCookies,
+		ScrollToBottomPage:      scrollToBottomPage,
 	}
 
 	return form, options
