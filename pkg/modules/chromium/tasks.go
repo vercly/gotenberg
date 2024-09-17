@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
@@ -13,6 +14,7 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
+	"github.com/gotenberg/gotenberg/v8/pkg/gotenberg"
 	"go.uber.org/zap"
 )
 
@@ -502,35 +504,23 @@ func tryAcceptCookies(logger *zap.Logger, tryAcceptCookies bool) chromedp.Action
 	const (
 		COOKIE_BUTTON_SELECTOR        = `//button[.//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '%s')]]`
 		NESTED_COOKIE_BUTTON_SELECTOR = `//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '%s')]`
-		COOKIE_CONSENT_EVAL           = `document.evaluate("%s", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue !== null`
-		LOAD_OFFSET                   = 2
 	)
 
+	cookieKeywords, err := gotenberg.StringEnv("ACCEPT_COOKIE_KEYWORDS")
+	if err != nil {
+		cookieKeywords = "akceptuj,accept,agree,consent,enter,go,zgod,zgadz,przej,allow all,allow"
+	}
 	selectors := []string{
-		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "akceptuj"),
-		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "accept"),
-		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "agree"),
-		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "consent"),
-		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "enter"),
-		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "go"),
-		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "zgod"),
-		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "przej"),
-		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "allow all"),
-		fmt.Sprintf(COOKIE_BUTTON_SELECTOR, "allow"),
-		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "akceptuj"),
-		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "accept"),
-		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "agree"),
-		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "consent"),
-		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "enter"),
-		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "go"),
-		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "zgod"),
-		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "przej"),
-		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "allow all"),
-		fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, "allow"),
 		`//button[contains(@class, 'cookie-accept')]`,
 		`//button[contains(@class, 'accept-cookies')]`,
 		`//button[@id='accept-cookie']`,
 		`//button[@id='accept-cookies']`,
+	}
+
+	keywords := strings.Split(cookieKeywords, ",")
+	for _, keyword := range keywords {
+		selectors = append(selectors, fmt.Sprintf(COOKIE_BUTTON_SELECTOR, keyword))
+		selectors = append(selectors, fmt.Sprintf(NESTED_COOKIE_BUTTON_SELECTOR, keyword))
 	}
 
 	return func(ctx context.Context) error {
@@ -544,8 +534,12 @@ func tryAcceptCookies(logger *zap.Logger, tryAcceptCookies bool) chromedp.Action
 				continue
 			}
 			if len(nodes) == 0 {
+				logger.Debug(xpath + ", false")
 				continue
 			}
+
+			logger.Debug(xpath + ", true")
+
 			_ = chromedp.MouseClickNode(nodes[0]).Do(ctx)
 		}
 
