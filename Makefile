@@ -6,8 +6,8 @@ help: ## Show the help
 it: build build-tests ## Initialize the development environment
 
 GOLANG_VERSION=1.23
-DOCKER_REPOSITORY=gotenberg
-GOTENBERG_VERSION=snapshot
+DOCKER_REPOSITORY=docker.vercly.it
+GOTENBERG_VERSION=8
 GOTENBERG_USER_GID=1001
 GOTENBERG_USER_UID=1001
 NOTO_COLOR_EMOJI_VERSION=v2.042 # See https://github.com/googlefonts/noto-emoji/releases.
@@ -51,7 +51,7 @@ CHROMIUM_ALLOW_FILE_ACCESS_FROM_FILES=false
 CHROMIUM_HOST_RESOLVER_RULES=
 CHROMIUM_PROXY_SERVER=
 CHROMIUM_ALLOW_LIST=
-CHROMIUM_DENY_LIST=^file:(?!//\/tmp/).*
+CHROMIUM_DENY_LIST=^file:(?!//\/tmp/).*|^https?.*app\.usercentrics.*
 CHROMIUM_CLEAR_CACHE=false
 CHROMIUM_CLEAR_COOKIES=false
 CHROMIUM_DISABLE_JAVASCRIPT=false
