@@ -7,7 +7,7 @@ it: build build-tests ## Initialize the development environment
 
 GOLANG_VERSION=1.23
 DOCKER_REPOSITORY=docker.vercly.it
-GOTENBERG_VERSION=8
+GOTENBERG_VERSION=8-chromium-only
 GOTENBERG_USER_GID=1001
 GOTENBERG_USER_UID=1001
 NOTO_COLOR_EMOJI_VERSION=v2.042 # See https://github.com/googlefonts/noto-emoji/releases.

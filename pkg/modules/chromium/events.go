@@ -23,7 +23,7 @@ import (
 // listenForEventRequestPaused listens for requests to check if they are
 // allowed or not.network.SetBlockedURLS()
 // TODO: https://chromedevtools.github.io/devtools-protocol/tot/Network/#method-setBlockedURLs (experimental for now).
-func listenForEventRequestPaused(ctx context.Context, logger *zap.Logger, allowList *regexp2.Regexp, denyList *regexp2.Regexp) {
+func listenForEventRequestPaused(ctx context.Context, logger *zap.Logger, allowList *regexp2.Regexp, denyList *regexp2.Regexp, adBlocked []string) {
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		switch e := ev.(type) {
 		case *fetch.EventRequestPaused:
@@ -37,7 +37,13 @@ func listenForEventRequestPaused(ctx context.Context, logger *zap.Logger, allowL
 					return
 				}
 
-				err := gotenberg.FilterDeadline(allowList, denyList, e.Request.URL, deadline)
+				err := gotenberg.FilterDeadline(allowList, denyList, adBlocked, e.Request.URL, deadline)
+				if err != nil {
+					logger.Warn(err.Error())
+					allow = false
+				}
+
+				err = gotenberg.FilterAdBlockDeadline(adBlocked, e.Request.URL, deadline)
 				if err != nil {
 					logger.Warn(err.Error())
 					allow = false

@@ -329,6 +329,7 @@ func (mod *Chromium) Descriptor() gotenberg.ModuleDescriptor {
 			fs.String("chromium-proxy-server", "", "Set the outbound proxy server; this switch only affects HTTP and HTTPS requests")
 			fs.String("chromium-allow-list", "", "Set the allowed URLs for Chromium using a regular expression")
 			fs.String("chromium-deny-list", `^file:(?!//\/tmp/).*`, "Set the denied URLs for Chromium using a regular expression")
+			fs.StringSlice("chromium-adblock", []string{}, "Use third-party denied URLs for Chromium")
 			fs.Bool("chromium-clear-cache", false, "Clear Chromium cache between each conversion")
 			fs.Bool("chromium-clear-cookies", false, "Clear Chromium cookies between each conversion")
 			fs.Bool("chromium-disable-javascript", false, "Disable JavaScript")
@@ -364,6 +365,7 @@ func (mod *Chromium) Provision(ctx *gotenberg.Context) error {
 
 		allowList:         flags.MustRegexp("chromium-allow-list"),
 		denyList:          flags.MustRegexp("chromium-deny-list"),
+		adBlock:           flags.MustStringSlice("chromium-adblock"),
 		clearCache:        flags.MustBool("chromium-clear-cache"),
 		clearCookies:      flags.MustBool("chromium-clear-cookies"),
 		disableJavaScript: flags.MustBool("chromium-disable-javascript"),

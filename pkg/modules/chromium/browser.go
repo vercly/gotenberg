@@ -41,6 +41,7 @@ type browserArguments struct {
 	// Tasks specific.
 	allowList         *regexp2.Regexp
 	denyList          *regexp2.Regexp
+	adBlock           []string
 	clearCache        bool
 	clearCookies      bool
 	disableJavaScript bool
@@ -280,7 +281,7 @@ func (b *chromiumBrowser) do(ctx context.Context, logger *zap.Logger, url string
 	}
 
 	// We validate the "main" URL against our allow / deny lists.
-	err := gotenberg.FilterDeadline(b.arguments.allowList, b.arguments.denyList, url, deadline)
+	err := gotenberg.FilterDeadline(b.arguments.allowList, b.arguments.denyList, nil, url, deadline)
 	if err != nil {
 		return fmt.Errorf("filter URL: %w", err)
 	}
@@ -296,7 +297,7 @@ func (b *chromiumBrowser) do(ctx context.Context, logger *zap.Logger, url string
 
 	// We validate all others requests against our allow / deny lists.
 	// If a request does not pass the validation, we make it fail.
-	listenForEventRequestPaused(taskCtx, logger, b.arguments.allowList, b.arguments.denyList)
+	listenForEventRequestPaused(taskCtx, logger, b.arguments.allowList, b.arguments.denyList, b.arguments.adBlock)
 
 	var (
 		invalidHttpStatusCode   error
