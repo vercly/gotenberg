@@ -462,7 +462,8 @@ func FormDataChromiumScreenshotOptions(ctx *api.Context) (*api.FormData, Screens
 }
 
 // validateUrlScheme returns an HTTP 400 [api] error unless rawURL uses the
-// http:// or https:// scheme. /forms/chromium/convert/url and
+// http:// or https:// scheme, or an allowed file:// URL under
+// allowFileUrlPrefixes. /forms/chromium/convert/url and
 // /forms/chromium/screenshot/url accept user-supplied URLs and are intended
 // for navigating to remote HTTP(S) resources.
 //
@@ -472,12 +473,11 @@ func FormDataChromiumScreenshotOptions(ctx *api.Context) (*api.FormData, Screens
 // worse: devtools:// pages expose privileged bindings such as
 // InspectorFrontendHost, so evaluating waitForExpression there reads local
 // files, and chrome:// pages can crash or restart the browser. Filter the
-// scheme at the route layer, where no request-scoped allowedFilePrefixes
-// exists and before Chromium navigates.
-func validateUrlScheme(rawURL string) error {
+// scheme at the route layer before Chromium navigates.
+func validateUrlScheme(rawURL string, allowFileUrlPrefixes ...string) (string, bool, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return api.WrapError(
+		return "", false, api.WrapError(
 			fmt.Errorf("parse URL: %w", err),
 			api.NewSentinelHttpError(http.StatusBadRequest, fmt.Sprintf("Invalid URL: %s", err)),
 		)
@@ -485,17 +485,48 @@ func validateUrlScheme(rawURL string) error {
 
 	switch strings.ToLower(parsed.Scheme) {
 	case "http", "https":
-		return nil
+		return rawURL, false, nil
 	case "file":
-		return api.WrapError(
-			errors.New("file:// scheme not allowed on URL route"),
+		if len(allowFileUrlPrefixes) == 0 {
+			return "", false, api.WrapError(
+				errors.New("file:// scheme not allowed on URL route"),
+				api.NewSentinelHttpError(
+					http.StatusBadRequest,
+					"file:// URLs are not accepted on this route. Use the /convert/html or /convert/markdown routes to render local HTML",
+				),
+			)
+		}
+
+		if parsed.Host != "" || parsed.Path == "" || !filepath.IsAbs(parsed.Path) {
+			return "", false, api.WrapError(
+				fmt.Errorf("invalid file:// URL %q on URL route", rawURL),
+				api.NewSentinelHttpError(
+					http.StatusBadRequest,
+					"Invalid form data: file:// URL must be a local absolute path without a host",
+				),
+			)
+		}
+
+		cleanPath := filepath.Clean(parsed.Path)
+		for _, prefix := range allowFileUrlPrefixes {
+			cleanPrefix := filepath.Clean(strings.TrimSpace(prefix))
+			if cleanPrefix == "" || cleanPrefix == "/" || !filepath.IsAbs(cleanPrefix) {
+				continue
+			}
+			if strings.HasPrefix(cleanPath, cleanPrefix+"/") {
+				return "file://" + cleanPath, true, nil
+			}
+		}
+
+		return "", false, api.WrapError(
+			fmt.Errorf("file:// URL %q is not within any allowed prefix", rawURL),
 			api.NewSentinelHttpError(
 				http.StatusBadRequest,
-				"file:// URLs are not accepted on this route. Use the /convert/html or /convert/markdown routes to render local HTML",
+				"file:// URL is not within an allowed directory",
 			),
 		)
 	default:
-		return api.WrapError(
+		return "", false, api.WrapError(
 			fmt.Errorf("%q scheme not allowed on URL route", parsed.Scheme),
 			api.NewSentinelHttpError(
 				http.StatusBadRequest,
@@ -506,7 +537,7 @@ func validateUrlScheme(rawURL string) error {
 }
 
 // convertUrlRoute returns an [api.Route] which can convert a URL to PDF.
-func convertUrlRoute(chromium Api, engine gotenberg.PdfEngine) api.Route {
+func convertUrlRoute(chromium Api, engine gotenberg.PdfEngine, allowFileUrlPrefixes ...string) api.Route {
 	return api.Route{
 		Method:      http.MethodPost,
 		Path:        "/forms/chromium/convert/url",
@@ -542,9 +573,13 @@ func convertUrlRoute(chromium Api, engine gotenberg.PdfEngine) api.Route {
 				return fmt.Errorf("validate form data: %w", err)
 			}
 
-			err = validateUrlScheme(url)
+			resolvedUrl, isFileUrl, err := validateUrlScheme(url, allowFileUrlPrefixes...)
 			if err != nil {
 				return fmt.Errorf("reject URL scheme: %w", err)
+			}
+			url = resolvedUrl
+			if isFileUrl {
+				options.AllowedFilePrefixes = allowFileUrlPrefixes
 			}
 
 			err = pdfengines.BindWatermarkFiles(watermarks, watermarkFiles)
@@ -568,7 +603,7 @@ func convertUrlRoute(chromium Api, engine gotenberg.PdfEngine) api.Route {
 
 // screenshotUrlRoute returns an [api.Route] which can take a screenshot from a
 // URL.
-func screenshotUrlRoute(chromium Api) api.Route {
+func screenshotUrlRoute(chromium Api, allowFileUrlPrefixes ...string) api.Route {
 	return api.Route{
 		Method:      http.MethodPost,
 		Path:        "/forms/chromium/screenshot/url",
@@ -585,9 +620,13 @@ func screenshotUrlRoute(chromium Api) api.Route {
 				return fmt.Errorf("validate form data: %w", err)
 			}
 
-			err = validateUrlScheme(url)
+			resolvedUrl, isFileUrl, err := validateUrlScheme(url, allowFileUrlPrefixes...)
 			if err != nil {
 				return fmt.Errorf("reject URL scheme: %w", err)
+			}
+			url = resolvedUrl
+			if isFileUrl {
+				options.AllowedFilePrefixes = allowFileUrlPrefixes
 			}
 
 			err = screenshotUrl(ctx, chromium, url, options)

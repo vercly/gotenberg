@@ -96,7 +96,7 @@ func TestValidateUrlScheme(t *testing.T) {
 		{"", true},
 	} {
 		t.Run(tc.url, func(t *testing.T) {
-			err := validateUrlScheme(tc.url)
+			_, _, err := validateUrlScheme(tc.url)
 			if tc.wantErr != (err != nil) {
 				t.Fatalf("validateUrlScheme(%q) error = %v, want error: %t", tc.url, err, tc.wantErr)
 			}
@@ -107,6 +107,183 @@ func TestValidateUrlScheme(t *testing.T) {
 			status, _ := api.ParseError(err)
 			if status != http.StatusBadRequest {
 				t.Errorf("status = %d, want %d", status, http.StatusBadRequest)
+			}
+		})
+	}
+}
+
+func TestResolveUrlForRoute_AllowFileUrlPrefixes(t *testing.T) {
+	prefixes := []string{"/tmp/reports", "/var/data/html/"}
+
+	for _, tc := range []struct {
+		name     string
+		url      string
+		prefixes []string
+		wantURL  string
+		wantFile bool
+		wantErr  bool
+	}{
+		{
+			name:     "http URL unaffected with prefixes",
+			url:      "https://example.com/a",
+			prefixes: prefixes,
+			wantURL:  "https://example.com/a",
+			wantFile: false,
+			wantErr:  false,
+		},
+		{
+			name:     "file URL rejected when prefixes empty",
+			url:      "file:///tmp/reports/issuer/123.html",
+			prefixes: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "file URL inside allowed prefix accepted",
+			url:      "file:///tmp/reports/issuer/123.html",
+			prefixes: prefixes,
+			wantURL:  "file:///tmp/reports/issuer/123.html",
+			wantFile: true,
+			wantErr:  false,
+		},
+		{
+			name:     "file URL inside second allowed prefix accepted",
+			url:      "file:///var/data/html/doc.html",
+			prefixes: prefixes,
+			wantURL:  "file:///var/data/html/doc.html",
+			wantFile: true,
+			wantErr:  false,
+		},
+		{
+			name:     "file URL with internal .. staying inside prefix normalized",
+			url:      "file:///tmp/reports/a/../b/doc.html",
+			prefixes: prefixes,
+			wantURL:  "file:///tmp/reports/b/doc.html",
+			wantFile: true,
+			wantErr:  false,
+		},
+		{
+			name:     "file URL traversal escaping prefix rejected",
+			url:      "file:///tmp/reports/../etc/passwd",
+			prefixes: prefixes,
+			wantErr:  true,
+		},
+		{
+			name:     "file URL outside prefix rejected",
+			url:      "file:///etc/passwd",
+			prefixes: prefixes,
+			wantErr:  true,
+		},
+		{
+			name:     "file URL sibling prefix boundary rejected",
+			url:      "file:///tmp/reports-other/doc.html",
+			prefixes: prefixes,
+			wantErr:  true,
+		},
+		{
+			name:     "file URL exact directory without child rejected",
+			url:      "file:///tmp/reports",
+			prefixes: prefixes,
+			wantErr:  true,
+		},
+		{
+			name:     "file URL with host rejected",
+			url:      "file://localhost/tmp/reports/doc.html",
+			prefixes: prefixes,
+			wantErr:  true,
+		},
+		{
+			name:     "root prefix ignored",
+			url:      "file:///etc/passwd",
+			prefixes: []string{"/"},
+			wantErr:  true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gotURL, gotFile, err := validateUrlScheme(tc.url, tc.prefixes...)
+			if tc.wantErr != (err != nil) {
+				t.Fatalf("validateUrlScheme(%q, %v) error = %v, want error: %t", tc.url, tc.prefixes, err, tc.wantErr)
+			}
+			if err != nil {
+				status, _ := api.ParseError(err)
+				if status != http.StatusBadRequest {
+					t.Errorf("status = %d, want %d", status, http.StatusBadRequest)
+				}
+				return
+			}
+			if gotURL != tc.wantURL {
+				t.Errorf("gotURL = %q, want %q", gotURL, tc.wantURL)
+			}
+			if gotFile != tc.wantFile {
+				t.Errorf("gotFile = %v, want %v", gotFile, tc.wantFile)
+			}
+		})
+	}
+}
+
+func TestChromiumValidate_AllowFileUrlPrefixes(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		prefixes []string
+		want     []string
+		wantErr  bool
+	}{
+		{
+			name:     "empty slice valid",
+			prefixes: nil,
+			want:     []string{},
+			wantErr:  false,
+		},
+		{
+			name:     "valid absolute paths cleaned",
+			prefixes: []string{"/tmp/reports/", " /var/reports/../data "},
+			want:     []string{"/tmp/reports", "/var/data"},
+			wantErr:  false,
+		},
+		{
+			name:     "root slash rejected",
+			prefixes: []string{"/"},
+			wantErr:  true,
+		},
+		{
+			name:     "cleaned to root slash rejected",
+			prefixes: []string{"/tmp/.."},
+			wantErr:  true,
+		},
+		{
+			name:     "relative path rejected",
+			prefixes: []string{"tmp/reports"},
+			wantErr:  true,
+		},
+		{
+			name:     "empty entry rejected",
+			prefixes: []string{""},
+			wantErr:  true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			mod := &Chromium{
+				maxConcurrency:       1,
+				allowFileUrlPrefixes: tc.prefixes,
+				args: browserArguments{
+					binPath:           tmpDir,
+					hyphenDataDirPath: tmpDir,
+				},
+			}
+			err := mod.Validate()
+			if tc.wantErr != (err != nil) {
+				t.Fatalf("Validate() error = %v, want error: %t", err, tc.wantErr)
+			}
+			if err != nil {
+				return
+			}
+			if len(mod.allowFileUrlPrefixes) != len(tc.want) {
+				t.Fatalf("allowFileUrlPrefixes = %v, want %v", mod.allowFileUrlPrefixes, tc.want)
+			}
+			for i := range tc.want {
+				if mod.allowFileUrlPrefixes[i] != tc.want[i] {
+					t.Errorf("allowFileUrlPrefixes[%d] = %q, want %q", i, mod.allowFileUrlPrefixes[i], tc.want[i])
+				}
 			}
 		})
 	}

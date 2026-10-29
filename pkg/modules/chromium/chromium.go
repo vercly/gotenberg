@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -108,10 +109,11 @@ const defaultDenyListPattern = `^file:(?!//\/tmp/).*`
 // Chromium is a module that provides both an [Api] and routes for converting
 // an HTML document to PDF.
 type Chromium struct {
-	autoStart      bool
-	disableRoutes  bool
-	maxConcurrency int64
-	args           browserArguments
+	autoStart            bool
+	disableRoutes        bool
+	maxConcurrency       int64
+	allowFileUrlPrefixes []string
+	args                 browserArguments
 
 	logger     *slog.Logger
 	browser    browser
@@ -501,6 +503,7 @@ func (mod *Chromium) Descriptor() gotenberg.ModuleDescriptor {
 			fs.StringSlice("chromium-allow-list", []string{}, `Set the allowed URLs for Chromium using regular expressions - supports multiple values. A match bypasses --chromium-deny-private-ips (CHROMIUM_DENY_PRIVATE_IPS) and --chromium-deny-public-ips (CHROMIUM_DENY_PUBLIC_IPS), so terminate the host or the pattern also matches suffix hosts, for example ^https?://internal\.svc(:|/|$)`)
 			fs.StringSlice("chromium-deny-list", []string{defaultDenyListPattern}, "Set the denied URLs for Chromium using regular expressions - supports multiple values")
 			fs.StringSlice("chromium-adblock", []string{}, "Use third-party denied URLs for Chromium")
+			fs.StringSlice("chromium-allow-file-url-prefixes", []string{}, "Allow file:// URLs under these absolute directory prefixes on the URL routes - supports multiple values")
 			fs.Bool("chromium-deny-private-ips", false, "Reject URLs whose host resolves to a non-public IP address (loopback, RFC1918, link-local, unique-local). Enable on deployments that accept untrusted form input to mitigate SSRF against internal services")
 			fs.Bool("chromium-deny-public-ips", false, "Reject URLs whose host resolves to a public IP address. Enable on air-gapped or data-governed deployments to prevent outbound traffic from leaving a private network")
 			fs.Bool("chromium-shared-browser-context", false, "Run every conversion in one shared browser context, so cookies, cache, and storage carry over between conversions. Only enable it when all callers trust each other: a conversion can then reuse cookies another one set")
@@ -529,6 +532,7 @@ func (mod *Chromium) Provision(ctx *gotenberg.Context) error {
 	mod.autoStart = flags.MustBool("chromium-auto-start")
 	mod.disableRoutes = flags.MustBool("chromium-disable-routes")
 	mod.maxConcurrency = flags.MustInt64("chromium-max-concurrency")
+	mod.allowFileUrlPrefixes = flags.MustStringSlice("chromium-allow-file-url-prefixes")
 
 	binPath, ok := os.LookupEnv("CHROMIUM_BIN_PATH")
 	if !ok {
@@ -722,6 +726,23 @@ func (mod *Chromium) Validate() error {
 		return fmt.Errorf("chromium-max-concurrency must be between 1 and 6, got %d", mod.maxConcurrency)
 	}
 
+	cleanedPrefixes := make([]string, 0, len(mod.allowFileUrlPrefixes))
+	for _, prefix := range mod.allowFileUrlPrefixes {
+		trimmed := strings.TrimSpace(prefix)
+		if trimmed == "" {
+			return errors.New("--chromium-allow-file-url-prefixes entry must not be empty")
+		}
+		if !filepath.IsAbs(trimmed) {
+			return fmt.Errorf("--chromium-allow-file-url-prefixes entry %q must be an absolute path", prefix)
+		}
+		cleaned := filepath.Clean(trimmed)
+		if cleaned == "/" {
+			return errors.New("--chromium-allow-file-url-prefixes entry \"/\" is not allowed")
+		}
+		cleanedPrefixes = append(cleanedPrefixes, cleaned)
+	}
+	mod.allowFileUrlPrefixes = cleanedPrefixes
+
 	if mod.args.enableEnvironmentProxy {
 		proxyErr := gotenberg.ValidateEnvironmentProxyVariables()
 		if proxyErr != nil {
@@ -903,8 +924,8 @@ func (mod *Chromium) Routes() ([]api.Route, error) {
 	}
 
 	return []api.Route{
-		convertUrlRoute(mod, mod.engine),
-		screenshotUrlRoute(mod),
+		convertUrlRoute(mod, mod.engine, mod.allowFileUrlPrefixes...),
+		screenshotUrlRoute(mod, mod.allowFileUrlPrefixes...),
 		convertHtmlRoute(mod, mod.engine),
 		screenshotHtmlRoute(mod),
 		convertMarkdownRoute(mod, mod.engine),
