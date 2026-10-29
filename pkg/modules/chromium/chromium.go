@@ -739,7 +739,7 @@ func (mod *Chromium) Validate() error {
 		if cleaned == "/" {
 			return errors.New("--chromium-allow-file-url-prefixes entry \"/\" is not allowed")
 		}
-		cleanedPrefixes = append(cleanedPrefixes, cleaned)
+		cleanedPrefixes = append(cleanedPrefixes, cleaned+"/")
 	}
 	mod.allowFileUrlPrefixes = cleanedPrefixes
 

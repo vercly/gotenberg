@@ -162,6 +162,14 @@ func TestResolveUrlForRoute_AllowFileUrlPrefixes(t *testing.T) {
 			wantErr:  false,
 		},
 		{
+			name:     "file URL with special characters re-encoded",
+			url:      "file:///tmp/reports/a%20b/doc%231.html",
+			prefixes: prefixes,
+			wantURL:  "file:///tmp/reports/a%20b/doc%231.html",
+			wantFile: true,
+			wantErr:  false,
+		},
+		{
 			name:     "file URL traversal escaping prefix rejected",
 			url:      "file:///tmp/reports/../etc/passwd",
 			prefixes: prefixes,
@@ -234,9 +242,9 @@ func TestChromiumValidate_AllowFileUrlPrefixes(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "valid absolute paths cleaned",
-			prefixes: []string{"/tmp/reports/", " /var/reports/../data "},
-			want:     []string{"/tmp/reports", "/var/data"},
+			name:     "valid absolute paths cleaned with trailing slash",
+			prefixes: []string{"/tmp/reports", "/tmp/reports/", " /var/reports/../data "},
+			want:     []string{"/tmp/reports/", "/tmp/reports/", "/var/data/"},
 			wantErr:  false,
 		},
 		{
@@ -286,5 +294,16 @@ func TestChromiumValidate_AllowFileUrlPrefixes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestAllowFileUrlPrefixes_SubResourceBoundary(t *testing.T) {
+	prefixes := normalizeFileUrlPrefixes("/tmp/reports")
+
+	if !isAllowedFileSubResource("file:///tmp/reports/issuer/style.css", prefixes) {
+		t.Fatal("expected sub-resource inside /tmp/reports/ to be allowed")
+	}
+	if isAllowedFileSubResource("file:///tmp/reports-other/leak.css", prefixes) {
+		t.Fatal("expected sibling prefix /tmp/reports-other/ sub-resource to be rejected")
 	}
 }

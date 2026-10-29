@@ -508,13 +508,9 @@ func validateUrlScheme(rawURL string, allowFileUrlPrefixes ...string) (string, b
 		}
 
 		cleanPath := filepath.Clean(parsed.Path)
-		for _, prefix := range allowFileUrlPrefixes {
-			cleanPrefix := filepath.Clean(strings.TrimSpace(prefix))
-			if cleanPrefix == "" || cleanPrefix == "/" || !filepath.IsAbs(cleanPrefix) {
-				continue
-			}
-			if strings.HasPrefix(cleanPath, cleanPrefix+"/") {
-				return "file://" + cleanPath, true, nil
+		for _, prefix := range normalizeFileUrlPrefixes(allowFileUrlPrefixes...) {
+			if strings.HasPrefix(cleanPath, prefix) {
+				return (&url.URL{Scheme: "file", Path: cleanPath}).String(), true, nil
 			}
 		}
 
@@ -534,6 +530,22 @@ func validateUrlScheme(rawURL string, allowFileUrlPrefixes ...string) (string, b
 			),
 		)
 	}
+}
+
+// normalizeFileUrlPrefixes cleans and appends a trailing slash to each valid
+// absolute directory prefix so both main-page and sub-resource prefix checks
+// enforce a directory boundary (e.g. "/tmp/reports/" does not match
+// "/tmp/reports-other/").
+func normalizeFileUrlPrefixes(prefixes ...string) []string {
+	normalized := make([]string, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		cleanPrefix := filepath.Clean(strings.TrimSpace(prefix))
+		if cleanPrefix == "" || cleanPrefix == "/" || !filepath.IsAbs(cleanPrefix) {
+			continue
+		}
+		normalized = append(normalized, cleanPrefix+"/")
+	}
+	return normalized
 }
 
 // convertUrlRoute returns an [api.Route] which can convert a URL to PDF.
@@ -579,7 +591,7 @@ func convertUrlRoute(chromium Api, engine gotenberg.PdfEngine, allowFileUrlPrefi
 			}
 			url = resolvedUrl
 			if isFileUrl {
-				options.AllowedFilePrefixes = allowFileUrlPrefixes
+				options.AllowedFilePrefixes = normalizeFileUrlPrefixes(allowFileUrlPrefixes...)
 			}
 
 			err = pdfengines.BindWatermarkFiles(watermarks, watermarkFiles)
@@ -626,7 +638,7 @@ func screenshotUrlRoute(chromium Api, allowFileUrlPrefixes ...string) api.Route 
 			}
 			url = resolvedUrl
 			if isFileUrl {
-				options.AllowedFilePrefixes = allowFileUrlPrefixes
+				options.AllowedFilePrefixes = normalizeFileUrlPrefixes(allowFileUrlPrefixes...)
 			}
 
 			err = screenshotUrl(ctx, chromium, url, options)
