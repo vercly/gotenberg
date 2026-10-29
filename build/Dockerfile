@@ -8,10 +8,12 @@ ARG GOLANG_VERSION=1.27.3
 # ----------------------------------------------
 # Note: this stage is required as pdfcpu does not release an armhf variant by
 # default.
-FROM golang:$GOLANG_VERSION AS pdfcpu-binary-stage
+FROM --platform=$BUILDPLATFORM golang:$GOLANG_VERSION AS pdfcpu-binary-stage
 
 # See https://github.com/pdfcpu/pdfcpu/releases.
 ARG PDFCPU_VERSION=v0.16.3
+ARG TARGETOS
+ARG TARGETARCH
 ENV CGO_ENABLED=0
 
 # Define the working directory outside of $GOPATH (we're using go modules).
@@ -24,16 +26,16 @@ RUN curl -Ls "https://github.com/pdfcpu/pdfcpu/archive/refs/tags/$PDFCPU_VERSION
 RUN go mod download \
     && go mod verify
 
-RUN go build -o pdfcpu -ldflags "-s -w -X 'main.version=$PDFCPU_VERSION' -X 'github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model.VersionStr=$PDFCPU_VERSION' -X main.builtBy=gotenberg" ./cmd/pdfcpu \
-    # Verify installation.
-    && ./pdfcpu version
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o pdfcpu -ldflags "-s -w -X 'main.version=$PDFCPU_VERSION' -X 'github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model.VersionStr=$PDFCPU_VERSION' -X main.builtBy=gotenberg" ./cmd/pdfcpu
 
 # ----------------------------------------------
 # Gotenberg binary build stage
 # ----------------------------------------------
-FROM golang:$GOLANG_VERSION AS gotenberg-binary-stage
+FROM --platform=$BUILDPLATFORM golang:$GOLANG_VERSION AS gotenberg-binary-stage
 
 ARG GOTENBERG_VERSION=snapshot
+ARG TARGETOS
+ARG TARGETARCH
 ENV CGO_ENABLED=0
 
 # Define the working directory outside of $GOPATH (we're using go modules).
@@ -49,9 +51,9 @@ RUN go mod download \
 COPY cmd ./cmd
 COPY pkg ./pkg
 
-RUN go build -o gotenberg -ldflags "-s -w -X 'github.com/gotenberg/gotenberg/v8/cmd.Version=$GOTENBERG_VERSION'" cmd/gotenberg/main.go \
-    && go build -o gotenberg-chromium -ldflags "-s -w -X 'github.com/gotenberg/gotenberg/v8/cmd.Version=$GOTENBERG_VERSION'" cmd/gotenberg-chromium/main.go \
-    && go build -o gotenberg-libreoffice -ldflags "-s -w -X 'github.com/gotenberg/gotenberg/v8/cmd.Version=$GOTENBERG_VERSION'" cmd/gotenberg-libreoffice/main.go
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o gotenberg -ldflags "-s -w -X 'github.com/gotenberg/gotenberg/v8/cmd.Version=$GOTENBERG_VERSION'" cmd/gotenberg/main.go \
+    && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o gotenberg-chromium -ldflags "-s -w -X 'github.com/gotenberg/gotenberg/v8/cmd.Version=$GOTENBERG_VERSION'" cmd/gotenberg-chromium/main.go \
+    && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o gotenberg-libreoffice -ldflags "-s -w -X 'github.com/gotenberg/gotenberg/v8/cmd.Version=$GOTENBERG_VERSION'" cmd/gotenberg-libreoffice/main.go
 
 # ----------------------------------------------
 # Custom JRE stage
@@ -95,7 +97,7 @@ RUN for alias in "emsigneccrootcag3 [jdk]" "comodoaaaca [jdk]"; do \
 # ----------------------------------------------
 # Downloader stage
 # ----------------------------------------------
-FROM debian:13-slim AS downloader-stage
+FROM --platform=$BUILDPLATFORM debian:13-slim AS downloader-stage
 
 # See https://gitlab.com/pdftk-java/pdftk/-/releases - Binary package.
 ARG PDFTK_VERSION=v3.3.3

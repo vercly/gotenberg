@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
@@ -682,6 +683,89 @@ func waitDelayBeforePrintActionFunc(logger *slog.Logger, disableJavaScript bool,
 		case <-time.After(delay):
 			return nil
 		}
+	}
+}
+
+func scrollToBottomPage(logger *slog.Logger, scrollToBottomPage bool) chromedp.ActionFunc {
+	return func(ctx context.Context) error {
+		if !scrollToBottomPage {
+			return nil
+		}
+		script := `
+				function myScroll(){
+					window.scrollTo({top: current,left: 0,behavior: "instant"});
+					current = current + windowHeight;
+				}
+				
+				function checkScrollExpected(){
+					var body = document.body,
+					html = document.documentElement;
+					var height = Math.max( body.scrollHeight, body.offsetHeight,
+							html.clientHeight, html.scrollHeight, html.offsetHeight );
+					console.log(current, height);
+					if( current < height ) {
+						myScroll();
+						setTimeout(checkScrollExpected, 50);
+					}
+				}
+
+				var current = 0;
+				var windowHeight = window.innerHeight;
+				checkScrollExpected();`
+
+		logger.DebugContext(ctx, "scroll to bottom running")
+
+		evaluate := chromedp.Evaluate(script, nil)
+		_ = evaluate.Do(ctx)
+
+		return nil
+	}
+}
+
+func tryAcceptCookies(logger *slog.Logger, tryAcceptCookies bool) chromedp.ActionFunc {
+	const (
+		cookieButtonSelector       = `//button[.//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '%s')]]`
+		nestedCookieButtonSelector = `//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '%s')]`
+	)
+
+	cookieKeywords, err := gotenberg.StringEnv("ACCEPT_COOKIE_KEYWORDS")
+	if err != nil {
+		cookieKeywords = "akceptuj,accept,agree,consent,enter,go,zgod,zgadz,przej,allow all,allow"
+	}
+	selectors := []string{
+		`//button[contains(@class, 'cookie-accept')]`,
+		`//button[contains(@class, 'accept-cookies')]`,
+		`//button[@id='accept-cookie']`,
+		`//button[@id='accept-cookies']`,
+	}
+
+	for keyword := range strings.SplitSeq(cookieKeywords, ",") {
+		selectors = append(selectors, fmt.Sprintf(cookieButtonSelector, keyword))
+		selectors = append(selectors, fmt.Sprintf(nestedCookieButtonSelector, keyword))
+	}
+
+	return func(ctx context.Context) error {
+		if !tryAcceptCookies {
+			return nil
+		}
+		for _, xpath := range selectors {
+			var nodes []*cdp.Node
+			err := chromedp.Nodes(xpath, &nodes, chromedp.AtLeast(0)).Do(ctx)
+			if err != nil {
+				logger.ErrorContext(ctx, fmt.Sprintf("%v", err))
+				continue
+			}
+			if len(nodes) == 0 {
+				logger.DebugContext(ctx, xpath+", false")
+				continue
+			}
+
+			logger.DebugContext(ctx, xpath+", true")
+
+			_ = chromedp.MouseClickNode(nodes[0]).Do(ctx)
+		}
+
+		return nil
 	}
 }
 

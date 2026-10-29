@@ -6,7 +6,17 @@ help: ## Show the help
 
 .PHONY: build
 build: ## Build the Gotenberg's Docker image (use TARGET=gotenberg-chromium or TARGET=gotenberg-libreoffice for variants)
-	docker build \
+	docker buildx build \
+	--platform $(PLATFORMS) \
+	--target $(TARGET) \
+	-t $(DOCKER_REGISTRY)/$(DOCKER_REPOSITORY):$(GOTENBERG_VERSION) \
+	-f $(DOCKERFILE) $(DOCKER_BUILD_CONTEXT)
+
+.PHONY: push
+push: ## Build and push the Gotenberg's Docker image
+	docker buildx build \
+	--push \
+	--platform $(PLATFORMS) \
 	--target $(TARGET) \
 	-t $(DOCKER_REGISTRY)/$(DOCKER_REPOSITORY):$(GOTENBERG_VERSION) \
 	-f $(DOCKERFILE) $(DOCKER_BUILD_CONTEXT)
@@ -63,7 +73,7 @@ CHROMIUM_HOST_RESOLVER_RULES=
 CHROMIUM_PROXY_SERVER=
 CHROMIUM_ENABLE_ENVIRONMENT_PROXY=false
 CHROMIUM_ALLOW_LIST=
-CHROMIUM_DENY_LIST=^file:(?!//\/tmp/).*
+CHROMIUM_DENY_LIST=^file:(?!//\/tmp/).*|^https?.*app\.usercentrics.*
 CHROMIUM_DENY_PRIVATE_IPS=false
 CHROMIUM_DENY_PUBLIC_IPS=false
 CHROMIUM_SHARED_BROWSER_CONTEXT=false
